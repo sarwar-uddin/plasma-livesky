@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Live aircraft for the Live Sky lock screen.
+
+While the screen is locked, polls the OpenSky Network for aircraft near you and writes
+them to ~/.cache/livesky/planes.qml, which the lock screen reloads every few seconds and
+extrapolates between updates. While unlocked it makes no requests at all.
+
+OpenSky's anonymous limit is 400 requests a day; the interval stretches as the day's
+budget runs down, and a 429 backs off until OpenSky says to retry. The box sent is
+rounded to 0.1 degree, so it never gives away more than the neighbourhood.
+"""
+import json, os, subprocess, sys, time, urllib.error, urllib.request
+
+PLUGIN = "com.github.sarwaruddin.livesky"
+GROUPS = ["--file", "kscreenlockerrc", "--group", "Greeter", "--group", "Wallpaper",
+          "--group", PLUGIN, "--group", "General"]
+CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "livesky")
+OUT = os.path.join(CACHE, "planes.qml")
+UA = {"User-Agent": "livesky-planes/1.0 (KDE Plasma wallpaper)"}
+FAST_INTERVAL = 20          # something airborne close by, low: watch it closely
+BASE_INTERVAL = 75          # otherwise
+BOX = 0.45                  # degrees around you (~50 km)
+
+
+def read(key, default):
+    try:
+        out = subprocess.run(["kreadconfig6", *GROUPS, "--key", key], capture_output=True, text=True, timeout=10).stdout.strip()
+        return out or default
+    except Exception:
+        return default
+
+
+def locked():
+    try:
+        out = subprocess.run(["busctl", "--user", "call", "org.freedesktop.ScreenSaver", "/ScreenSaver",
+                              "org.freedesktop.ScreenSaver", "GetActive"], capture_output=True, text=True, timeout=5).stdout
+        return "true" in out
+    except Exception:
+        return False
+
+
+def write(states, t):
+    os.makedirs(CACHE, exist_ok=True)
+    planes = []
+    for s in states or []:
+        # icao24, callsign, country, time_position, last_contact, lon, lat, baro_alt, on_ground,
+        # velocity, true_track, vertical_rate, sensors, geo_alt, squawk, spi, source, category
+        if s[5] is None or s[6] is None or s[8]:
+            continue
+        alt = s[13] if s[13] is not None else s[7]
+        if alt is None:
+            continue
+        planes.append({"id": s[0], "cs": (s[1] or "").strip(), "lat": s[6], "lon": s[5], "alt": alt,
+                       "v": s[9] or 0, "trk": s[10] or 0, "vr": s[11] or 0, "t": (s[3] or t) * 1000})
+    body = ("import QtQml\n// written by livesky-planes; reloaded by the lock screen\n"
+            "QtObject {\n    property real fetched: %d\n    property var planes: %s\n}\n"
+            % (int(time.time() * 1000), json.dumps(planes, separators=(",", ":"))))
+    tmp = OUT + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(body)
+    os.replace(tmp, OUT)
+
+
+def busy(states, lat, lng):
+    """Anything airborne within ~15 km and below 3000 m (approach, departure)?"""
+    for s in states or []:
+        if s[8] or s[5] is None or s[6] is None:
+            continue
+        alt = s[13] if s[13] is not None else s[7]
+        d = ((s[6] - lat) * 110.54) ** 2 + ((s[5] - lng) * 101.9) ** 2
+        if d < 15 ** 2 and alt is not None and alt < 3000:
+            return True
+    return False
+
+
+def poll(lat, lng):
+    la, lo = round(lat, 1), round(lng, 1)
+    url = (f"https://opensky-network.org/api/states/all?extended=0&lamin={la - BOX:.2f}&lomin={lo - BOX:.2f}"
+           f"&lamax={la + BOX:.2f}&lomax={lo + BOX:.2f}")
+    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:
+        remaining = int(r.headers.get("X-Rate-Limit-Remaining", "400"))
+        d = json.loads(r.read().decode("utf-8"))
+    return d.get("states"), d.get("time", time.time()), remaining
+
+
+def main():
+    backoff_until = 0
+    while True:
+        if not locked():
+            time.sleep(10)
+            continue
+        if time.time() < backoff_until:
+            time.sleep(30)
+            continue
+        lat = float(read("latitude", "23.8103"))
+        lng = float(read("longitude", "90.4125"))
+        interval = BASE_INTERVAL
+        try:
+            states, t, remaining = poll(lat, lng)
+            write(states, t)
+            if busy(states, lat, lng):
+                interval = FAST_INTERVAL
+            # stretch the interval as the day's budget runs low
+            if remaining < 150:
+                interval = max(interval, 90)
+            if remaining < 50:
+                interval = max(interval, 300)
+            if remaining < 15:
+                interval = 900
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                wait = int(e.headers.get("X-Rate-Limit-Retry-After-Seconds", "3600"))
+                print(f"opensky: rate limited, retrying in {wait} s", file=sys.stderr)
+                backoff_until = time.time() + wait
+            else:
+                print("opensky:", e, file=sys.stderr)
+        except Exception as e:
+            print("opensky:", e, file=sys.stderr)
+        # sleep in small steps so an unlock stops polling promptly
+        end = time.time() + interval
+        while time.time() < end and locked():
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--once":
+        s, t, rem = poll(float(read("latitude", "23.8103")), float(read("longitude", "90.4125")))
+        write(s, t)
+        print("wrote", OUT, "requests left today:", rem)
+    else:
+        main()

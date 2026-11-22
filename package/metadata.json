@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Id": "com.github.sarwaruddin.livesky",
+    "Name": "Live Sky",
+    "Description": "The real sky over you right now, with the Milky Way, planets, the Moon, satellites and meteors, plus a big clock and a live read-out. Made for the lock screen.",
+    "Icon": "kstars",
+    "License": "GPL-2.0-or-later",
+    "Version": "1.4.1",
+    "Authors": [ { "Name": "Sarwar Uddin" } ]
+  },
+  "KPackageStructure": "Plasma/Wallpaper",
+  "X-Plasma-API-Minimum-Version": "6.0"
+}

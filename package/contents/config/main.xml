@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="placeName" type="String"><default>Dhaka</default></entry>
+    <entry name="latitude" type="Double"><default>23.8103</default></entry>
+    <entry name="longitude" type="Double"><default>90.4125</default></entry>
+    <entry name="facing" type="Int">
+      <label>Azimuth at the centre of the view: 180 south, 0 north, 90 east, 270 west</label>
+      <default>180</default>
+    </entry>
+    <entry name="skyMode" type="Int">
+      <label>Stars down to: 0 city (3.2), 1 suburban (4.5), 2 dark site (5.5)</label>
+      <default>2</default>
+    </entry>
+    <entry name="showLabels" type="Bool"><default>true</default></entry>
+    <entry name="meteors" type="Bool"><default>true</default></entry>
+    <entry name="showClock" type="Bool"><default>true</default></entry>
+    <entry name="showInfo" type="Bool"><default>true</default></entry>
+    <entry name="use24h" type="Bool"><default>true</default></entry>
+    <entry name="prayerMethod" type="String"><default>karachi</default></entry>
+    <entry name="asrHanafi" type="Bool"><default>true</default></entry>
+    <entry name="landmarks" type="String">
+      <label>Buildings you want placed by hand, JSON: [{ az, dist (m), width (m), height (m), kind: striped|antennas|block, color }]</label>
+      <default></default>
+    </entry>
+    <entry name="tle" type="String">
+      <label>Satellite orbits (CelesTrak TLEs), written by livesky-fetch</label>
+      <default></default>
+    </entry>
+    <entry name="weather" type="String">
+      <label>Current weather and air quality as JSON, written by livesky-fetch</label>
+      <default></default>
+    </entry>
+  </group>
+</kcfg>

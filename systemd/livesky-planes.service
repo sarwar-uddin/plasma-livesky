@@ -1,0 +1,11 @@
+[Unit]
+Description=Live aircraft for the Live Sky lock screen (polls OpenSky only while locked)
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/livesky-planes
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=default.target

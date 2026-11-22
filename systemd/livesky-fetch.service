@@ -1,0 +1,7 @@
+[Unit]
+Description=Fetch weather and satellite orbits for the Live Sky lock screen
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/livesky-fetch

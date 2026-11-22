@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Feed the Live Sky lock screen, which has no network of its own.
+
+Fetches the current weather and air quality (Open-Meteo) and the bright-satellite
+orbits (CelesTrak "visual" group, at most every 6 hours) and writes them into the
+lock screen's wallpaper configuration in kscreenlockerrc. Run by livesky-fetch.timer.
+"""
+import json, os, subprocess, sys, time, urllib.request
+
+PLUGIN = "com.github.sarwaruddin.livesky"
+GROUPS = ["--file", "kscreenlockerrc", "--group", "Greeter", "--group", "Wallpaper",
+          "--group", PLUGIN, "--group", "General"]
+CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "livesky")
+TLE_FILE = os.path.join(CACHE, "visual.tle")
+UA = {"User-Agent": "livesky-fetch/1.0 (KDE Plasma wallpaper)"}
+
+
+def read(key, default):
+    try:
+        out = subprocess.run(["kreadconfig6", *GROUPS, "--key", key], capture_output=True, text=True, timeout=10).stdout.strip()
+        return out or default
+    except Exception:
+        return default
+
+
+def write(key, value):
+    subprocess.run(["kwriteconfig6", *GROUPS, "--key", key, value], check=True, timeout=10)
+
+
+def get(url, timeout=30):
+    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=timeout) as r:
+        return r.read().decode("utf-8")
+
+
+def main():
+    os.makedirs(CACHE, exist_ok=True)
+    lat = float(read("latitude", "23.8103"))
+    lng = float(read("longitude", "90.4125"))
+    ok = True
+
+    try:
+        w = json.loads(get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}"
+                           "&current=temperature_2m,weather_code,is_day,cloud_cover,cloud_cover_low,cloud_cover_high,"
+                           "precipitation,wind_speed_10m,wind_direction_10m,visibility&timezone=auto"))["current"]
+        weather = {"temp": w["temperature_2m"], "code": w["weather_code"], "isDay": bool(w["is_day"]),
+                   "cloud": w["cloud_cover"], "cloudLow": w["cloud_cover_low"], "cloudHigh": w["cloud_cover_high"],
+                   "rain": w["precipitation"], "wind": w["wind_speed_10m"], "windDir": w["wind_direction_10m"],
+                   "vis": w["visibility"], "aqi": None, "pm25": None, "t": int(time.time() * 1000)}
+        try:
+            a = json.loads(get(f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lng}"
+                               "&current=us_aqi,pm2_5"))["current"]
+            weather["aqi"], weather["pm25"] = a["us_aqi"], a["pm2_5"]
+        except Exception as e:
+            print("air quality:", e, file=sys.stderr)
+        write("weather", json.dumps(weather, separators=(",", ":")))
+    except Exception as e:
+        print("weather:", e, file=sys.stderr)
+        ok = False
+
+    # CelesTrak asks clients not to re-download the same data more than every couple of hours
+    fresh = os.path.exists(TLE_FILE) and time.time() - os.path.getmtime(TLE_FILE) < 6 * 3600
+    if not fresh:
+        try:
+            tle = get("https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle")
+            if "25544U" in tle:
+                with open(TLE_FILE, "w") as f:
+                    f.write(tle)
+            else:
+                print("celestrak: unexpected reply, keeping the cached orbits", file=sys.stderr)
+        except Exception as e:
+            print("celestrak:", e, file=sys.stderr)
+    if os.path.exists(TLE_FILE):
+        with open(TLE_FILE) as f:
+            tle = f.read()
+        if tle != read("tle", ""):
+            write("tle", tle)
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
