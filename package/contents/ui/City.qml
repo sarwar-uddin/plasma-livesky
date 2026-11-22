@@ -17,6 +17,17 @@ Item {
     property real sunAlt: -30
     property real eye: 31                     // metres above the street: an 8th floor above lower blocks
     property var landmarks: []                // optional [{ az, dist, width, height, kind }]
+    // the lights in the sky, to light the city by
+    property real sunAz: 180
+    property real moonAlt: -10
+    property real moonAz: 0
+    property real moonlight: 0                // Moon's brightness x height, 0..1 (from the sky)
+    property real cloud: 0                    // cloud cover 0..1, dims the Moon
+    readonly property real moonK: moonlight * (1 - 0.65 * cloud)
+    readonly property real golden: sunAlt > -2 && sunAlt < 14 ? 1 - Math.abs(sunAlt - 4) / 10 : 0
+    // repaint when the light has changed enough to see
+    readonly property int lightKey: Math.round(moonK * 12) * 10000 + Math.round(golden * 8) * 1000
+                                    + Math.round(((moonK > 0.05 ? moonAz : 0) + (golden > 0 ? sunAz : 0)) / 12)
 
     readonly property real s: cam ? Math.max(0.6, cam.h / 1440) : 1
     readonly property real litFraction: {
@@ -31,6 +42,7 @@ Item {
     property real paintedDay: -1
     onLitFractionChanged: if (Math.abs(litFraction - paintedLit) > 0.02) canvas.requestPaint()
     onDayKChanged: if (Math.abs(dayK - paintedDay) > 0.06) canvas.requestPaint()
+    onLightKeyChanged: canvas.requestPaint()
     onCamChanged: canvas.requestPaint()
 
     // facade colours by day; at night they're dimmed and lit by the haze
@@ -163,7 +175,17 @@ Item {
                 if (Math.min(pa.y, pb.y) > v.h + 50) continue
                 // facade colour: day colour, dimmed at night, then hazed by distance
                 let c = city.colours[b.color]
-                c = mix(mix(c, [0, 0, 0], 0.82 * (1 - day)), [20, 21, 23], 0.18 * (1 - day))
+                // light on this facade: daylight, plus moonlight (cool) and a low Sun (warm),
+                // stronger on faces turned towards them. A facade faces you: its normal points
+                // from the building back towards you, at bearing + 180.
+                const normal = (b.az1 + b.az2) / 2 + 180
+                const toward = az => Math.max(0, Math.cos((normal - az) * R))
+                const dirM = toward(city.moonAz), dirS = toward(city.sunAz)
+                const L = Math.min(1, day + city.moonK * (0.22 + 0.34 * dirM))
+                c = mix(c, [0, 0, 0], 0.86 * (1 - L))
+                c = mix(c, [150, 172, 220], 0.22 * city.moonK * (0.4 + 0.6 * dirM) * (1 - day))   // silvered by the Moon
+                c = mix(c, [255, 160, 96], 0.42 * dirS * city.golden)                    // golden hour
+                c = mix(c, [20, 21, 23], 0.15 * (1 - L))
                 c = mix(c, haze, Math.min(0.92, far * (day > 0.5 ? 0.9 : 1)))
                 // facade
                 if (!quad(b.az1, b.az2, base, top)) continue
@@ -236,7 +258,12 @@ Item {
                 if (b.H < eye) {
                     const back = altOf(b.H, b.D + b.depth)
                     // flat concrete roof
-                    const roofC = mix(mix([112, 110, 104], [0, 0, 0], 0.84 * (1 - day)), haze, Math.min(0.9, far))
+                    // roofs face the sky: lit by how high the Moon (or Sun) stands
+                    const up = Math.min(1, day + city.moonK * 0.4 * Math.max(0.3, Math.sin(Math.max(0, city.moonAlt) * R)))
+                    let roofC = mix([112, 110, 104], [0, 0, 0], 0.88 * (1 - up))
+                    roofC = mix(roofC, [150, 172, 220], 0.14 * city.moonK * (1 - day))
+                    roofC = mix(roofC, [255, 170, 110], 0.25 * city.golden)
+                    roofC = mix(roofC, haze, Math.min(0.9, far))
                     if (quad(b.az1, b.az2, top, back)) { ctx.fillStyle = rgb(roofC); ctx.fill() }
                     // a parapet lip along the roof's front edge
                     if (px > 30) { const lip = altOf(b.H + 0.9, b.D); if (quad(b.az1, b.az2, top, lip)) { ctx.fillStyle = rgb(mix(c, [255, 255, 255], 0.08)); ctx.fill() } }

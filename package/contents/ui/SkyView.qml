@@ -31,6 +31,8 @@ Item {
     readonly property real sunAlt: Sky.body("Sun", time, lat, lng).alt
     readonly property real nightK: Math.max(0, Math.min(1, (-sunAlt - 4) / 12))     // 0 day .. 1 full night
     // a bright Moon high up washes out the Milky Way and the faintest stars
+    readonly property var sunPos: Sky.body("Sun", time, lat, lng)
+    readonly property var moonPos: Sky.body("Moon", time, lat, lng)
     readonly property real moonlight: {
         const m = Sky.body("Moon", time, lat, lng)
         if (m.alt <= 0) return 0
@@ -378,6 +380,11 @@ Item {
         cam: view.cam
         time: view.time
         sunAlt: view.sunAlt
+        sunAz: view.sunPos.az
+        moonAlt: view.moonPos.alt
+        moonAz: view.moonPos.az
+        moonlight: view.moonlight
+        cloud: view.weather && view.weather.cloud !== undefined ? view.weather.cloud / 100 : 0
         landmarks: view.landmarks
     }
 
