@@ -18,6 +18,12 @@ What's in it:
 - **Little life:** the brightest stars twinkle, harder near the horizon, and at dawn and dusk a flock of birds sometimes crosses.
 - **A big clock and the date** in the lower left. In the lower right: weather and air quality, the next prayer time, the Moon, the planets that are up, and the next visible satellite pass.
 
+The same view eight hours apart, lit by whatever is in the sky:
+
+| 13:00, daylight | 21:00, a bright Moon | 05:00, Moon set, before dawn |
+|---|---|---|
+| ![13:00](screenshots/light-13.png) | ![21:00](screenshots/light-21.png) | ![05:00](screenshots/light-05.png) |
+
 ![The small hours: Orion, Sirius, Canopus and the winter Milky Way](screenshots/small-hours.png)
 
 
